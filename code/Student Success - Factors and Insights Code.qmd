@@ -1,0 +1,135 @@
+---
+title: "Student Success: Factors and Insights"
+author: "Huiting Wu, Eli Singh, Evan Nagesh"
+date: today
+format:
+  pdf:
+    titlepage: true
+    toc: false
+    number-sections: false
+---
+
+```{r message=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+```
+
+# Reading Dataset
+
+```{r}
+df1 <- read_csv("StudentPerformanceFactors.csv")
+df <- df1 |> mutate(across(where(is.character), as.factor)) |> 
+  mutate(diff_score = Exam_Score - Previous_Scores) 
+```
+
+# Resultes
+
+## Tables
+```{r message=FALSE, warning=FALSE}
+# Create a table to compare the numerical factors for 
+# improved students and non-improved students
+df_num_improve <- df |> filter(diff_score > 0) |> 
+  summarise(across(where(is.numeric), ~ round(mean(.), 0))) |> 
+  select(Attendance, Sleep_Hours, Hours_Studied, 
+         Tutoring_Sessions, Physical_Activity) |> 
+  pivot_longer(cols = everything(),
+               names_to = "Factor", values_to = "Average")
+
+df_num_Not_improve <- df |> filter(diff_score <= 0) |> 
+  summarise(across(where(is.numeric), ~ round(mean(.), 0))) |> 
+  select(Attendance, Sleep_Hours, Hours_Studied, 
+         Tutoring_Sessions, Physical_Activity) |> 
+  pivot_longer(cols = everything(),
+               names_to = "Factor", values_to = "Average")
+
+df_num_compare <- left_join(df_num_improve, df_num_Not_improve, by = "Factor",
+          suffix = c("_Improve", "_Not_Improve"))
+kable(df_num_compare, 
+      caption = "Average of Numerical Factors for Students 
+      Who Improved vs. Not Improved") |> 
+  kable_styling(font_size = 9.5)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Create a table to compare the most common level of 
+# the categorical factors for improved students and non-improved students
+df_improve <- df |> filter(diff_score > 0) |> 
+  select(Parental_Involvement,
+         Peer_Influence, Family_Income) |>             
+  pivot_longer(everything(), names_to = "Factor", values_to = "Level") |> 
+  group_by(Factor, Level) |> 
+  summarise(Count = n(),
+            Proportion = round((Count/2140)*100, 2)) |> 
+  slice_max(Proportion, n = 1) |> 
+  arrange(desc(Proportion))
+
+df_not_improve <- df |> filter(diff_score <= 0) |> 
+  select(Parental_Involvement,
+         Peer_Influence, Family_Income) |>             
+  pivot_longer(everything(), names_to = "Factor", values_to = "Level") |> 
+  group_by(Factor, Level) |> 
+  summarise(Count = n(),
+            Proportion = round((Count/4467)*100,2)) |> 
+  slice_max(Proportion, n = 1)
+
+df_compare <- left_join(df_improve, df_not_improve, by = "Factor",
+                        suffix = c("_Improve", "_Not_Improve")) |> 
+  select(-Count_Improve,-Count_Not_Improve)
+kable(df_compare, 
+      caption = "Proportion(%) of Students in Most Common Level for Categorical 
+      Factor: Improved vs. Not Improved") |> 
+  kable_styling(font_size = 9.5)
+```
+
+## Plots
+
+```{r fig.width=8}
+# Group the final exam score into 3 levels
+df <- df |> 
+  mutate(score_level = case_when(Exam_Score > 70 ~ "high",
+                                 Exam_Score < 65 ~ "low",
+                                 .default = "average"))
+df |> 
+  mutate(score_level = factor(score_level, 
+                              levels = c("low", "average", "high"),
+                              labels = c("Low", "Average", "High"))) |> 
+  group_by(score_level) |> 
+  summarize(
+    avg_hrs = mean(Hours_Studied),
+    avg_attend = mean(Attendance),
+    avg_sleep = mean(Sleep_Hours),
+    avg_previous = mean(Previous_Scores)
+  ) |> 
+  pivot_longer(
+    cols = c(avg_hrs, avg_attend, avg_sleep, avg_previous),
+    names_to = "variable",
+    values_to = "value"
+  ) |> 
+  mutate(variable = case_when(
+    variable == "avg_hrs" ~ "Hours Studied",
+    variable == "avg_attend" ~ "Attendance Percentage",
+    variable == "avg_sleep" ~ "Sleep Hours",
+    variable == "avg_previous" ~ "Previous Score")) |> 
+  ggplot(aes(x = variable, y = value, fill = score_level)) +
+    geom_col(position = "dodge") +
+    labs(x = "Variable", 
+         y = "Average", 
+         title = "Average Values by Score Level") +
+    theme_classic()
+```
+
+```{r}
+df |> filter(diff_score > 0) |> 
+  ggplot(aes(x = Hours_Studied, y = diff_score, col = Motivation_Level)) + 
+  geom_point() +
+  stat_smooth(method = 'lm', se = FALSE, col = "red") + 
+  labs(title = "Hours Studied vs. Improvement in Exam Score",
+       x = "Hours Studied",
+       y = "Improvement in Exam Score") + 
+  theme_bw()
+```
+
